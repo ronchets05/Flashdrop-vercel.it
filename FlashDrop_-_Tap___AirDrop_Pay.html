@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="it" class="h-full bg-black">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FlashDrop • Tap & AirDrop Pay</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #000000;
+      color: #ffffff;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Apple NameDrop Fluid Glow */
+    .namedrop-glow {
+      background: radial-gradient(circle at 50% 25%, rgba(59, 130, 246, 0.28) 0%, rgba(147, 51, 234, 0.18) 35%, rgba(0, 0, 0, 0) 70%);
+    }
+
+    /* Glassmorphism Sheet */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    /* Swipe-to-Send track shimmer */
+    @keyframes shimmerTrack {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .swipe-text-shimmer {
+      background: linear-gradient(90deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,1) 50%, rgba(255,255,255,0.4) 100%);
+      background-size: 200% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: shimmerTrack 2.5s infinite linear;
+    }
+
+    /* Pulsing AirDrop Ripple */
+    @keyframes airDropRipple {
+      0% { transform: scale(0.85); opacity: 0.8; }
+      50% { opacity: 0.35; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .ripple-ring-1 {
+      animation: airDropRipple 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+    }
+    .ripple-ring-2 {
+      animation: airDropRipple 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+      animation-delay: 1s;
+    }
+    .ripple-ring-3 {
+      animation: airDropRipple 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+      animation-delay: 2s;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+
+  <main class="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-4 relative namedrop-glow overflow-hidden">
+
+    <!-- Top Status Bar -->
+    <header class="flex items-center justify-between z-20 pt-2 pb-1">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-blue-600/30 border border-blue-500/50 flex items-center justify-center text-blue-400">
+          <i class="fa-solid fa-tower-broadcast text-xs animate-pulse"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-black tracking-wider uppercase text-white">FLASHDROP</span>
+            <span id="nfcBadge" class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">AIRDROP PRONTO</span>
+          </div>
+          <p class="text-[10px] text-zinc-400">Seleziona, scorri e invia con AirDrop</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="openIdentityBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-card text-xs text-zinc-200 hover:border-blue-500 transition">
+          <i class="fa-solid fa-user-circle text-blue-400"></i>
+          <span id="myTagDisplay" class="font-mono text-[11px] font-bold">Tu (@mario)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- STEP 1: Seleziona Persona / Destinatario -->
+    <section class="z-20 my-1">
+      <div class="flex items-center justify-between mb-2 px-1">
+        <span class="text-[10px] uppercase font-mono tracking-widest text-zinc-400">A CHI VUOI INVIARE:</span>
+        <button id="addCustomPeerBtn" class="text-[10px] text-blue-400 font-mono font-semibold hover:underline">
+          + Inserisci altro
+        </button>
+      </div>
+
+      <!-- Peer Avatars Carousel -->
+      <div id="peerCarousel" class="flex items-center gap-2.5 overflow-x-auto pb-1.5 no-scrollbar">
+        <!-- Rendered dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- STEP 2: Importo con Regolatore Swipe & Input -->
+    <section class="z-20 my-auto text-center">
+      <p class="text-[10px] uppercase font-mono tracking-widest text-zinc-400 mb-1">IMPORTO DA MANDARE</p>
+      
+      <div class="inline-flex items-center justify-center gap-1 font-mono">
+        <span class="text-3xl text-zinc-400 font-medium">€</span>
+        <input 
+          type="number" 
+          id="amountInput" 
+          value="15.00" 
+          step="1" 
+          min="1" 
+          max="5000"
+          class="w-44 text-5xl font-black text-center bg-transparent border-b-2 border-zinc-800 focus:border-blue-500 focus:outline-none text-white tracking-tight"
+        />
+      </div>
+
+      <!-- Slider / Range Swipe per scegliere al volo l'importo -->
+      <div class="max-w-xs mx-auto mt-4 px-2">
+        <input 
+          type="range" 
+          id="amountRangeSlider" 
+          min="1" 
+          max="100" 
+          value="15" 
+          class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+        />
+        <div class="flex justify-between text-[10px] font-mono text-zinc-500 mt-1">
+          <span>€1</span>
+          <span>€25</span>
+          <span>€50</span>
+          <span>€75</span>
+          <span>€100+</span>
+        </div>
+      </div>
+
+      <!-- Quick Selector Pills -->
+      <div class="flex items-center justify-center gap-2 mt-3">
+        <button class="amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition" data-val="5.00">€5</button>
+        <button class="amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition" data-val="10.00">€10</button>
+        <button class="amt-btn px-3 py-1 rounded-full bg-blue-600/30 border border-blue-500 text-xs font-mono font-bold text-blue-400 active:scale-95 transition" data-val="15.00">€15</button>
+        <button class="amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition" data-val="30.00">€30</button>
+        <button class="amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition" data-val="50.00">€50</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Swipe to AirDrop Track -->
+    <footer class="z-20 space-y-3 pb-3">
+      
+      <!-- Box Info Destinatario Selezionato -->
+      <div class="px-4 py-2.5 rounded-2xl glass-card flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2.5">
+          <div id="selectedPeerAvatar" class="w-7 h-7 rounded-full bg-blue-500 text-white font-bold flex items-center justify-center text-xs shadow">
+            A
+          </div>
+          <div>
+            <div class="font-bold text-white leading-tight" id="selectedPeerName">Alessandro Bianchi</div>
+            <div class="text-[10px] font-mono text-zinc-400" id="selectedPeerTag">@alex_pay</div>
+          </div>
+        </div>
+        <span class="text-[11px] font-mono text-emerald-400 font-bold" id="badgeTargetAmount">€15.00</span>
+      </div>
+
+      <!-- SWIPE SLIDER TRACK: Scorri per inviare con AirDrop -->
+      <div id="swipeTrack" class="relative w-full h-16 bg-zinc-900 border border-zinc-800 rounded-3xl p-1.5 flex items-center overflow-hidden select-none touch-none shadow-2xl">
+        <!-- Progress bar background while swiping -->
+        <div id="swipeProgress" class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-30 rounded-3xl w-0 pointer-events-none transition-all duration-75"></div>
+
+        <!-- Shimmering Instruction Text -->
+        <div id="swipeLabel" class="absolute inset-0 flex items-center justify-center pointer-events-none pl-10 pr-4">
+          <span class="text-xs font-black uppercase tracking-wider swipe-text-shimmer font-mono flex items-center gap-2">
+            <span>SCORRI PER INVIARE CON AIRDROP</span>
+            <i class="fa-solid fa-angles-right text-[10px] animate-pulse"></i>
+          </span>
+        </div>
+
+        <!-- Draggable Handle Thumb -->
+        <div id="swipeThumb" class="relative z-10 w-13 h-13 aspect-square rounded-2xl bg-white text-black flex items-center justify-center shadow-lg cursor-grab active:cursor-grabbing hover:scale-105 active:scale-95 transition-transform duration-150">
+          <i class="fa-solid fa-share-nodes text-lg text-blue-600"></i>
+        </div>
+      </div>
+
+      <!-- Alternative Quick Buttons -->
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button id="airdropShareBtn" class="py-2.5 px-3 rounded-2xl glass-card hover:bg-white/10 active:scale-95 transition flex items-center justify-center gap-2 text-xs font-semibold text-white">
+          <i class="fa-solid fa-qrcode text-blue-400"></i>
+          <span>Mostra QR Code</span>
+        </button>
+
+        <button id="writeNfcBtn" class="py-2.5 px-3 rounded-2xl glass-card hover:bg-white/10 active:scale-95 transition flex items-center justify-center gap-2 text-xs font-semibold text-white">
+          <i class="fa-solid fa-bolt text-amber-400"></i>
+          <span>Scrivi Tag NFC</span>
+        </button>
+      </div>
+
+      <div class="text-center">
+        <span class="text-[10px] text-zinc-500">Apple AirDrop P2P • SCT Inst Instant Settlement</span>
+      </div>
+    </footer>
+
+  </main>
+
+  <div id="airDropModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
+    <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl p-5 text-white">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-share-from-square text-blue-400"></i>
+          <h3 class="text-xs font-black uppercase tracking-wider font-mono">Condividi con AirDrop o QR</h3>
+        </div>
+        <button id="closeAirDropModalBtn" class="w-7 h-7 rounded-full bg-zinc-900 text-zinc-400 hover:text-white flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-zinc-400 mb-3">
+        L'altra persona inquadra o riceve il link istantaneo per incassare o pagare i fondi:
+      </p>
+
+      <!-- QR Box -->
+      <div class="flex justify-center p-3 bg-white rounded-2xl mx-auto w-fit mb-3 shadow-lg">
+        <div id="qrcodeBox"></div>
+      </div>
+
+      <!-- Generated Link Display & Copy -->
+      <div class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-2 mb-3">
+        <input type="text" id="shareUrlInput" readonly class="flex-1 bg-transparent text-xs text-zinc-300 font-mono focus:outline-none truncate">
+        <button id="copyShareUrlBtn" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold text-white transition">
+          Copia
+        </button>
+      </div>
+
+      <button id="triggerNativeShareBtn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-xs uppercase tracking-wider text-white transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        <span>Apri Menu Condivisione (AirDrop)</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="nfcWriterModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-6 text-center text-white">
+      <div class="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-400 text-2xl mx-auto mb-3 animate-pulse">
+        <i class="fa-solid fa-wave-square"></i>
+      </div>
+
+      <h3 class="text-sm font-black uppercase font-mono mb-1">Pronto per scrivere il Tag NFC</h3>
+      <p class="text-xs text-zinc-400 mb-4" id="nfcWriterStatus">
+        Tocca una card NFC, un portachiavi o il retro di un altro smartphone per registrare il pagamento di <span id="nfcModalAmount" class="font-bold text-white">€10.00</span>.
+      </p>
+
+      <div class="p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-left font-mono text-[11px] text-zinc-300 mb-4">
+        <div>Payload: <span class="text-amber-400 font-bold">URI: flashdrop.pay</span></div>
+        <div>Destinatario: <span class="text-white font-bold" id="nfcPayloadTarget">@alex_pay</span></div>
+      </div>
+
+      <button id="cancelNfcBtn" class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 rounded-xl font-bold text-xs font-mono text-zinc-300 transition">
+        Annulla
+      </button>
+    </div>
+  </div>
+
+  <div id="identityModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl p-5 text-white">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
+        <h3 class="text-xs font-black uppercase tracking-wider font-mono">Impostazioni Pagamento Reale</h3>
+        <button id="closeIdentityModalBtn" class="w-7 h-7 rounded-full bg-zinc-900 text-zinc-400 hover:text-white flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 mb-4">
+        <div>
+          <label class="block text-[10px] uppercase font-mono text-zinc-400 mb-1">Il tuo Nome / Tag</label>
+          <input type="text" id="myHandleInput" value="@mario" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-[10px] uppercase font-mono text-zinc-400 mb-1">Il tuo IBAN / Revolut Revtag per incassi reali</label>
+          <input type="text" id="myIbanInput" value="IT89B0306909606100000012345" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-emerald-400 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="pt-2 border-t border-zinc-800">
+          <p class="text-[10px] uppercase font-mono text-zinc-400 mb-2">Seleziona Destinatario Vicino:</p>
+          <div class="space-y-1.5" id="peerChoiceList">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <button id="saveIdentityBtn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-xs uppercase font-mono text-white transition">
+        Salva Modifiche
+      </button>
+    </div>
+  </div>
+
+  <div id="successOverlay" class="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl hidden flex flex-col items-center justify-center p-6 text-center">
+    <div class="relative mb-5">
+      <div class="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 text-4xl shadow-[0_0_40px_rgba(16,185,129,0.7)] animate-bounce">
+        <i class="fa-solid fa-check"></i>
+      </div>
+    </div>
+
+    <span class="text-[10px] uppercase font-mono tracking-widest text-emerald-400 font-bold mb-1">SCAMBIO COMPLETATO IN 0.2s</span>
+    <h2 class="text-2xl font-black text-white mb-2">Transazione Eseguita</h2>
+    
+    <div class="text-4xl font-black font-mono text-white mb-4" id="successAmountText">
+      € 10.00
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 w-full max-w-xs text-left text-xs font-mono space-y-2 mb-5">
+      <div class="flex justify-between text-zinc-400">
+        <span>Metodo:</span>
+        <span class="text-white font-bold" id="receiptMethodText">NFC Tap-to-Pay</span>
+      </div>
+      <div class="flex justify-between text-zinc-400">
+        <span>Inviato a:</span>
+        <span class="text-emerald-400 font-bold" id="receiptPeerName">Alessandro (@alex_pay)</span>
+      </div>
+      <div class="flex justify-between text-zinc-400">
+        <span>Circuito:</span>
+        <span class="text-white font-bold">SEPA Instant / W3C</span>
+      </div>
+      <div class="flex justify-between text-zinc-400">
+        <span>ID Autorizzazione:</span>
+        <span class="text-zinc-300 font-bold" id="receiptAuthCode">FD-984210</span>
+      </div>
+    </div>
+
+    <button id="dismissSuccessBtn" class="w-full max-w-xs py-3 bg-white text-black font-extrabold rounded-2xl text-xs uppercase tracking-wider hover:bg-zinc-200 active:scale-95 transition">
+      Fatto
+    </button>
+  </div>
+
+  <script>
+    // Audio synthesizer using Web Audio API
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Procedural sound effects
+    function playTapHapticSound() {
+      try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(140, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.12);
+      } catch (e) {
+        console.warn("Audio unavailable", e);
+      }
+    }
+
+    function playSuccessChime() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const freqs = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        freqs.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+          gain.gain.setValueAtTime(0.25, now + idx * 0.06);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.06);
+          osc.stop(now + idx * 0.06 + 0.35);
+        });
+      } catch (e) {
+        console.warn("Audio unavailable", e);
+      }
+    }
+
+    // Trigger phone vibration if available
+    function triggerVibration(pattern = [50, 40, 60]) {
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate(pattern); } catch (e) {}
+      }
+    }
+
+    // App state
+    const KNOWN_PEERS = [
+      { id: 'alex', name: 'Alessandro Bianchi', tag: '@alex_pay', iban: 'IT78A0306909606100000099881', initial: 'A' },
+      { id: 'elena', name: 'Elena Moretti', tag: '@elena_m', iban: 'IT44C0306909606100000044552', initial: 'E' },
+      { id: 'marco', name: 'Marco Ferri', tag: '@marco_f', iban: 'IT12X0306909606100000033221', initial: 'M' }
+    ];
+
+    let currentPeer = KNOWN_PEERS[0];
+    let myUser = {
+      name: 'Mario Rossi',
+      tag: '@mario',
+      iban: 'IT89B0306909606100000012345'
+    };
+
+    // DOM Elements
+    const amountInput = document.getElementById('amountInput');
+    const amountRangeSlider = document.getElementById('amountRangeSlider');
+    const amtButtons = document.querySelectorAll('.amt-btn');
+    const peerCarousel = document.getElementById('peerCarousel');
+    const addCustomPeerBtn = document.getElementById('addCustomPeerBtn');
+    const selectedPeerAvatar = document.getElementById('selectedPeerAvatar');
+    const selectedPeerName = document.getElementById('selectedPeerName');
+    const selectedPeerTag = document.getElementById('selectedPeerTag');
+    const badgeTargetAmount = document.getElementById('badgeTargetAmount');
+
+    // Swipe Slider Elements
+    const swipeTrack = document.getElementById('swipeTrack');
+    const swipeThumb = document.getElementById('swipeThumb');
+    const swipeProgress = document.getElementById('swipeProgress');
+    const swipeLabel = document.getElementById('swipeLabel');
+
+    // Modals
+    const airDropModal = document.getElementById('airDropModal');
+    const airdropShareBtn = document.getElementById('airdropShareBtn');
+    const closeAirDropModalBtn = document.getElementById('closeAirDropModalBtn');
+    const qrcodeBox = document.getElementById('qrcodeBox');
+    const shareUrlInput = document.getElementById('shareUrlInput');
+    const copyShareUrlBtn = document.getElementById('copyShareUrlBtn');
+    const triggerNativeShareBtn = document.getElementById('triggerNativeShareBtn');
+
+    const writeNfcBtn = document.getElementById('writeNfcBtn');
+    const nfcWriterModal = document.getElementById('nfcWriterModal');
+    const cancelNfcBtn = document.getElementById('cancelNfcBtn');
+    const nfcModalAmount = document.getElementById('nfcModalAmount');
+    const nfcPayloadTarget = document.getElementById('nfcPayloadTarget');
+
+    const openIdentityBtn = document.getElementById('openIdentityBtn');
+    const identityModal = document.getElementById('identityModal');
+    const closeIdentityModalBtn = document.getElementById('closeIdentityModalBtn');
+    const myHandleInput = document.getElementById('myHandleInput');
+    const myIbanInput = document.getElementById('myIbanInput');
+    const myTagDisplay = document.getElementById('myTagDisplay');
+    const saveIdentityBtn = document.getElementById('saveIdentityBtn');
+    const peerChoiceList = document.getElementById('peerChoiceList');
+
+    const successOverlay = document.getElementById('successOverlay');
+    const successAmountText = document.getElementById('successAmountText');
+    const receiptMethodText = document.getElementById('receiptMethodText');
+    const receiptPeerName = document.getElementById('receiptPeerName');
+    const receiptAuthCode = document.getElementById('receiptAuthCode');
+    const dismissSuccessBtn = document.getElementById('dismissSuccessBtn');
+
+    let qrcodeInstance = null;
+
+    function updatePeerDisplay() {
+      selectedPeerAvatar.textContent = currentPeer.initial;
+      selectedPeerName.textContent = currentPeer.name;
+      selectedPeerTag.textContent = currentPeer.tag;
+      nfcPayloadTarget.textContent = currentPeer.tag;
+      renderPeerCarousel();
+    }
+
+    function renderPeerCarousel() {
+      peerCarousel.innerHTML = '';
+      KNOWN_PEERS.forEach(peer => {
+        const isSelected = peer.id === currentPeer.id;
+        const card = document.createElement('div');
+        card.className = `flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-2xl cursor-pointer transition-all duration-200 border ${
+          isSelected 
+            ? 'bg-blue-600/30 border-blue-500 scale-102 shadow-lg shadow-blue-500/20' 
+            : 'glass-card hover:bg-white/10 border-white/10'
+        }`;
+        card.innerHTML = `
+          <div class="w-8 h-8 rounded-full ${isSelected ? 'bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-300'} font-bold flex items-center justify-center text-xs">
+            ${peer.initial}
+          </div>
+          <div class="text-left">
+            <p class="text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-zinc-200'}">${peer.name.split(' ')[0]}</p>
+            <p class="text-[9px] font-mono ${isSelected ? 'text-blue-300' : 'text-zinc-400'}">${peer.tag}</p>
+          </div>
+        `;
+        card.onclick = () => {
+          currentPeer = peer;
+          updatePeerDisplay();
+          playTapHapticSound();
+          triggerVibration([20]);
+        };
+        peerCarousel.appendChild(card);
+      });
+    }
+
+    function syncAmountDisplays(val) {
+      const num = parseFloat(val) || 1.00;
+      badgeTargetAmount.textContent = `€${num.toFixed(2)}`;
+    }
+
+    // Amount range slider sync
+    amountRangeSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value).toFixed(2);
+      amountInput.value = val;
+      syncAmountDisplays(val);
+      amtButtons.forEach(b => {
+        b.className = 'amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition';
+      });
+    });
+
+    // Amount input sync
+    amountInput.addEventListener('input', (e) => {
+      syncAmountDisplays(e.target.value);
+      amountRangeSlider.value = Math.min(100, Math.max(1, parseFloat(e.target.value) || 1));
+      amtButtons.forEach(b => {
+        b.className = 'amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition';
+      });
+    });
+
+    // Amount pill selection
+    amtButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        amtButtons.forEach(b => {
+          b.className = 'amt-btn px-3 py-1 rounded-full glass-card text-xs font-mono font-semibold text-zinc-300 hover:text-white hover:border-blue-500 active:scale-95 transition';
+        });
+        btn.className = 'amt-btn px-3 py-1 rounded-full bg-blue-600/30 border border-blue-500 text-xs font-mono font-bold text-blue-400 active:scale-95 transition';
+        amountInput.value = btn.dataset.val;
+        amountRangeSlider.value = btn.dataset.val;
+        syncAmountDisplays(btn.dataset.val);
+        playTapHapticSound();
+        triggerVibration([25]);
+      });
+    });
+
+    // Add custom peer on the fly
+    addCustomPeerBtn.addEventListener('click', () => {
+      const input = prompt("Inserisci il nome o tag del destinatario (es. Giulia o @giulia_pay):");
+      if (input && input.trim()) {
+        const clean = input.trim();
+        const tag = clean.startsWith('@') ? clean : `@${clean.toLowerCase().replace(/\s+/g, '_')}`;
+        const newPeer = {
+          id: 'custom_' + Date.now(),
+          name: clean,
+          tag: tag,
+          initial: clean[0].toUpperCase()
+        };
+        KNOWN_PEERS.unshift(newPeer);
+        currentPeer = newPeer;
+        updatePeerDisplay();
+        playTapHapticSound();
+      }
+    });
+
+    function generateUniversalShareUrl() {
+      const amtVal = parseFloat(amountInput.value) || 15.00;
+      const baseUrl = window.location.origin + window.location.pathname;
+      return `${baseUrl}?payto=${encodeURIComponent(currentPeer.tag)}&amount=${amtVal.toFixed(2)}&from=${encodeURIComponent(myUser.tag)}`;
+    }
+
+    // SWIPE-TO-SEND WITH AIRDROP INTERACTION LOGIC
+    let isDragging = false;
+    let startX = 0;
+    let currentX = 0;
+    let maxDistance = 0;
+
+    function initSwipeSlider() {
+      const getClientX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+
+      const onStart = (e) => {
+        isDragging = true;
+        startX = getClientX(e);
+        const trackRect = swipeTrack.getBoundingClientRect();
+        const thumbRect = swipeThumb.getBoundingClientRect();
+        maxDistance = trackRect.width - thumbRect.width - 12; // 12px padding
+        swipeThumb.style.transition = 'none';
+        swipeProgress.style.transition = 'none';
+        playTapHapticSound();
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        const delta = getClientX(e) - startX;
+        currentX = Math.max(0, Math.min(delta, maxDistance));
+        
+        // Move thumb
+        swipeThumb.style.transform = `translateX(${currentX}px)`;
+        // Expand progress
+        swipeProgress.style.width = `${currentX + 50}px`;
+        // Dim label text as we slide
+        const progressRatio = currentX / maxDistance;
+        swipeLabel.style.opacity = `${Math.max(0.1, 1 - progressRatio * 1.5)}`;
+      };
+
+      const onEnd = async () => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        const threshold = maxDistance * 0.85; // 85% to trigger
+        if (currentX >= threshold) {
+          // Completed swipe! Snap to end
+          swipeThumb.style.transition = 'transform 0.15s ease-out';
+          swipeThumb.style.transform = `translateX(${maxDistance}px)`;
+          swipeProgress.style.width = '100%';
+          triggerVibration([80, 50, 100]);
+          playTapHapticSound();
+
+          // Trigger AirDrop Share
+          setTimeout(() => {
+            triggerAirDropShare();
+            // Reset slider after share prompt opens
+            setTimeout(resetSlider, 800);
+          }, 150);
+        } else {
+          // Bounce back
+          resetSlider();
+        }
+      };
+
+      function resetSlider() {
+        swipeThumb.style.transition = 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        swipeProgress.style.transition = 'width 0.25s ease';
+        swipeThumb.style.transform = 'translateX(0px)';
+        swipeProgress.style.width = '0px';
+        swipeLabel.style.opacity = '1';
+        currentX = 0;
+      }
+
+      swipeThumb.addEventListener('mousedown', onStart);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+
+      swipeThumb.addEventListener('touchstart', onStart, { passive: true });
+      window.addEventListener('touchmove', onMove, { passive: true });
+      window.addEventListener('touchend', onEnd);
+    }
+
+    async function triggerAirDropShare() {
+      const link = generateUniversalShareUrl();
+      const amtVal = parseFloat(amountInput.value) || 15.00;
+      
+      // Se il browser supporta navigator.share (iOS Safari con AirDrop nativo, Chrome ecc.)
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `FlashDrop: €${amtVal.toFixed(2)} a ${currentPeer.name}`,
+            text: `Tocca o apri con AirDrop per inviare/ricevere €${amtVal.toFixed(2)} con ${currentPeer.tag}.`,
+            url: link
+          });
+          executeInstantPayment("AirDrop Condiviso");
+        } catch (err) {
+          // Se l'utente annulla il dialog di sistema, apriamo il modal QR/Link immediato
+          console.log("AirDrop sharing dialog dismissed", err);
+          openAirDropFallbackModal(link);
+        }
+      } else {
+        // Desktop / Browser non-share
+        openAirDropFallbackModal(link);
+      }
+    }
+
+    function openAirDropFallbackModal(link) {
+      shareUrlInput.value = link;
+      qrcodeBox.innerHTML = '';
+      qrcodeInstance = new QRCode(qrcodeBox, {
+        text: link,
+        width: 170,
+        height: 170,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      airDropModal.classList.remove('hidden');
+    }
+
+    function executeInstantPayment(methodName = "AirDrop P2P") {
+      playTapHapticSound();
+      triggerVibration([80, 50, 100]);
+
+      const amtVal = parseFloat(amountInput.value) || 15.00;
+      const formattedAmt = `€ ${amtVal.toFixed(2)}`;
+
+      successAmountText.textContent = formattedAmt;
+      receiptMethodText.textContent = methodName;
+      receiptPeerName.textContent = `${currentPeer.name} (${currentPeer.tag})`;
+      receiptAuthCode.textContent = 'FD-' + Math.floor(100000 + Math.random() * 900000);
+
+      setTimeout(() => {
+        playSuccessChime();
+        if (typeof confetti === 'function') {
+          confetti({
+            particleCount: 50,
+            spread: 60,
+            origin: { y: 0.65 }
+          });
+        }
+        successOverlay.classList.remove('hidden');
+      }, 150);
+    }
+
+    // Modal triggers & actions
+    airdropShareBtn.addEventListener('click', () => {
+      playTapHapticSound();
+      openAirDropFallbackModal(generateUniversalShareUrl());
+    });
+
+    closeAirDropModalBtn.addEventListener('click', () => {
+      airDropModal.classList.add('hidden');
+    });
+
+    copyShareUrlBtn.addEventListener('click', () => {
+      shareUrlInput.select();
+      document.execCommand('copy');
+      copyShareUrlBtn.textContent = 'Copiato!';
+      setTimeout(() => copyShareUrlBtn.textContent = 'Copia', 1500);
+    });
+
+    triggerNativeShareBtn.addEventListener('click', () => {
+      triggerAirDropShare();
+    });
+
+    openIdentityBtn.addEventListener('click', () => {
+      identityModal.classList.remove('hidden');
+    });
+
+    closeIdentityModalBtn.addEventListener('click', () => {
+      identityModal.classList.add('hidden');
+    });
+
+    saveIdentityBtn.addEventListener('click', () => {
+      myUser.tag = myHandleInput.value.trim() || '@mario';
+      myUser.iban = myIbanInput.value.trim() || myUser.iban;
+      myTagDisplay.textContent = `Tu (${myUser.tag})`;
+      identityModal.classList.add('hidden');
+      playTapHapticSound();
+    });
+
+    dismissSuccessBtn.addEventListener('click', () => {
+      successOverlay.classList.add('hidden');
+    });
+
+    let nfcAbortController = null;
+
+    writeNfcBtn.addEventListener('click', async () => {
+      playTapHapticSound();
+      const amtVal = parseFloat(amountInput.value) || 15.00;
+      nfcModalAmount.textContent = `€${amtVal.toFixed(2)}`;
+      nfcWriterModal.classList.remove('hidden');
+
+      const payloadUrl = generateUniversalShareUrl();
+
+      if ('NDEFReader' in window) {
+        try {
+          nfcAbortController = new AbortController();
+          const ndef = new NDEFReader();
+          document.getElementById('nfcWriterStatus').innerHTML = 
+            'Avvicina il tag o il telefono: <strong>Scrittura NFC in ascolto...</strong>';
+
+          await ndef.write({
+            records: [
+              { recordType: "url", data: payloadUrl },
+              { recordType: "text", data: `FlashDrop €${amtVal.toFixed(2)} a ${currentPeer.tag}` }
+            ]
+          }, { signal: nfcAbortController.signal });
+
+          triggerVibration([100, 50, 100]);
+          nfcWriterModal.classList.add('hidden');
+          executeInstantPayment("Tag NFC Scritto");
+        } catch (error) {
+          console.warn("NFC Write cancelled or error", error);
+        }
+      } else {
+        document.getElementById('nfcWriterStatus').innerHTML = 
+          'Web NFC attivo in modalità simulata. Tocca un tag o premi Annulla per chiudere.';
+      }
+    });
+
+    cancelNfcBtn.addEventListener('click', () => {
+      if (nfcAbortController) {
+        nfcAbortController.abort();
+      }
+      nfcWriterModal.classList.add('hidden');
+    });
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      updatePeerDisplay();
+      initSwipeSlider();
+      syncAmountDisplays(amountInput.value);
+
+      // Parse incoming URL query params if opened from a shared link / AirDrop / NFC
+      const urlParams = new URLSearchParams(window.location.search);
+      const incomingPayto = urlParams.get('payto');
+      const incomingAmount = urlParams.get('amount');
+      if (incomingPayto) {
+        const found = KNOWN_PEERS.find(p => p.tag.toLowerCase() === incomingPayto.toLowerCase());
+        if (found) {
+          currentPeer = found;
+        } else {
+          currentPeer = {
+            id: 'param_' + Date.now(),
+            name: incomingPayto,
+            tag: incomingPayto,
+            initial: incomingPayto.replace('@','')[0]?.toUpperCase() || 'P'
+          };
+          KNOWN_PEERS.unshift(currentPeer);
+        }
+        updatePeerDisplay();
+      }
+      if (incomingAmount) {
+        amountInput.value = incomingAmount;
+        amountRangeSlider.value = Math.min(100, Math.max(1, parseFloat(incomingAmount) || 15));
+        syncAmountDisplays(incomingAmount);
+      }
+    });
+
+    let nfcAbortController = null;
+
+    writeNfcBtn.addEventListener('click', async () => {
+      playTapHapticSound();
+      const amtVal = parseFloat(amountInput.value) || 10.00;
+      nfcModalAmount.textContent = `€${amtVal.toFixed(2)}`;
+      nfcWriterModal.classList.remove('hidden');
+
+      const payloadUrl = generateUniversalShareUrl();
+
+      // Check if Web NFC NDEFReader is supported in browser (Android Chrome)
+      if ('NDEFReader' in window) {
+        try {
+          nfcAbortController = new AbortController();
+          const ndef = new NDEFReader();
+          document.getElementById('nfcWriterStatus').innerHTML = 
+            'Avvicina il tag o il telefono: <strong>Scrittura NFC in ascolto...</strong>';
+
+          await ndef.write({
+            records: [
+              { recordType: "url", data: payloadUrl },
+              { recordType: "text", data: `FlashDrop €${amtVal.toFixed(2)} a ${currentPeer.tag}` }
+            ]
+          }, { signal: nfcAbortController.signal });
+
+          triggerVibration([100, 50, 100]);
+          nfcWriterModal.classList.add('hidden');
+          executeInstantPayment("Tag NFC Scritto");
+        } catch (error) {
+          console.warn("NFC Write cancelled or error", error);
+        }
+      } else {
+        // Fallback info for iOS / non-WebNFC
+        document.getElementById('nfcWriterStatus').innerHTML = 
+          'Web NFC attivo in modalità simulata. Tocca un tag o premi Annulla per chiudere.';
+      }
+    });
+
+    cancelNfcBtn.addEventListener('click', () => {
+      if (nfcAbortController) {
+        nfcAbortController.abort();
+      }
+      nfcWriterModal.classList.add('hidden');
+    });
+
+    // Auto-listen for incoming Web NFC taps if supported
+    async function startNfcBackgroundListener() {
+      if ('NDEFReader' in window) {
+        try {
+          const ndef = new NDEFReader();
+          await ndef.scan();
+          nfcBadge.textContent = "NFC PRONTO";
+          ndef.onreading = event => {
+            console.log("NFC Tag detected!", event.serialNumber);
+            executeInstantPayment("NFC Tap Hardware");
+          };
+        } catch (err) {
+          nfcBadge.textContent = "NFC STANDBY";
+        }
+      } else {
+        nfcBadge.textContent = "AIRDROP PRONTO";
+      }
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      updatePeerDisplay();
+      startNfcBackgroundListener();
+
+      // Parse incoming URL query params if opened from a shared link / NFC tag
+      const urlParams = new URLSearchParams(window.location.search);
+      const incomingPayto = urlParams.get('payto');
+      const incomingAmount = urlParams.get('amount');
+      if (incomingPayto) {
+        const found = KNOWN_PEERS.find(p => p.tag.toLowerCase() === incomingPayto.toLowerCase());
+        if (found) {
+          currentPeer = found;
+          updatePeerDisplay();
+        }
+      }
+      if (incomingAmount) {
+        amountInput.value = incomingAmount;
+      }
+    });
+  </script>
+</body>
+</html>
